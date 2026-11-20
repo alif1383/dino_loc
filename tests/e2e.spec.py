@@ -88,7 +88,21 @@ def mean_rgb_diff(sig_a, sig_b):
 
 
 def verify_viewport_not_black(page, label=""):
-    """Takes a fast JPEG screenshot of the live viewport and verifies the center region is rich non-black photography."""
+    """Waits for fade transitions to settle, captures viewport, and verifies rich non-black photography."""
+    page.wait_for_function(
+        """() => {
+          const sv = document.getElementById('streetview-layer');
+          const img = document.getElementById('sv-image');
+          const veil = document.getElementById('dive-veil');
+          if (!sv || !img) return false;
+          const svOp = parseFloat(getComputedStyle(sv).opacity || '0');
+          const imgOp = parseFloat(getComputedStyle(img).opacity || '0');
+          const veilOp = veil ? parseFloat(getComputedStyle(veil).opacity || '0') : 0;
+          return svOp >= 0.95 && imgOp >= 0.95 && veilOp <= 0.05 && img.complete && img.naturalWidth >= 1000;
+        }""",
+        polling=100,
+        timeout=10000,
+    )
     jpg = page.screenshot(type="jpeg", quality=75, animations="allow")
     im = Image.open(io.BytesIO(jpg)).convert("RGB")
     w, h = im.size
@@ -104,7 +118,7 @@ def verify_viewport_not_black(page, label=""):
         if r + g + b > 70:
             bright_px += 1
     avg_luma = luma_sum / n
-    assert avg_luma > 28 and bright_px > n * 0.45, (
+    assert avg_luma > 24 and bright_px > n * 0.50, (
         f"Street View appears black/blank for {label}: avg_luma={avg_luma:.1f}, bright={bright_px}/{n}"
     )
     return avg_luma
@@ -266,7 +280,7 @@ def run_suite():
                 polling=100,
                 timeout=10000,
             )
-            time.sleep(0.4)
+            time.sleep(0.65)
             box = page.locator("#sv-image").bounding_box()
             assert box and box["width"] >= 1000 and box["height"] >= 600, f"Street View image box collapsed: {box}"
             luma_peg = verify_viewport_not_black(page, "Pegman Drop Street View")
@@ -339,8 +353,91 @@ def run_suite():
             print(f"[PASS] 5. All 5 Street View stages non-black (Montana luma={luma_mt:.1f}), portraits, compass, hotspots & MiniMap")
 
             # =================================================================
-            # TEST 6: Click-to-Drop Directly in Paleo Earth Mode (Inverse Euler)
+            # TEST 6: Change Time Period in Orbit + Click "Enter Prehistoric View" Button!
+            # Verifies all 5 stages (in both Paleo & Modern Earth modes), mid-dive stage switch,
+            # and mid-dive Escape cancellation.
             # =================================================================
+            expected_mt = [
+                ("4400ma", "4.4 Ga", "Hadean Earth", "Magma", "hadean_magma_coast.jpg"),
+                ("300ma", "300 Ma", "Carboniferous", "Coal Swamp", "carboniferous_coal_swamp.jpg"),
+                ("150ma", "150 Ma", "Late Jurassic", "Jurassic Sauropod", "jurassic_sauropod_floodplain.jpg"),
+                ("68ma", "68 Ma", "Late Cretaceous", "Laramidia", "cretaceous_laramidia_forest.jpg"),
+                ("20ka", "20 ka", "Last Ice Age", "Laurentide", "iceage_laurentide_glacier.jpg"),
+            ]
+            seen_reenter_scenes = set()
+            for idx, (sid, short_age, era_name, title_substr, scene_file) in enumerate(expected_mt):
+                # Test both Paleo Earth (even indices) and Modern Earth (odd indices)
+                if idx % 2 == 1:
+                    page.click("#btn-mode-modern")
+                else:
+                    page.click("#btn-mode-paleo")
+
+                page.click(f'.stage-tab[data-stage-id="{sid}"]')
+                assert short_age in page.locator("#pin-card-sub").inner_text(), (
+                    f"Pin card did not update for {sid}: {page.locator('#pin-card-sub').inner_text()}"
+                )
+                assert short_age in page.locator("#btn-reenter-label").inner_text(), (
+                    f"Enter Prehistoric View label did not update for {sid}: {page.locator('#btn-reenter-label').inner_text()}"
+                )
+
+                page.click("#btn-reenter-view")
+                page.wait_for_selector("#streetview-layer.is-open", timeout=15000)
+                page.wait_for_function(
+                    f"() => {{ const i = document.getElementById('sv-image'); return i.complete && i.naturalWidth >= 1000 && !i.classList.contains('is-loading') && i.src.includes('{scene_file}'); }}",
+                    polling=100,
+                    timeout=10000,
+                )
+                time.sleep(0.6)
+
+                assert page.evaluate("() => window.__DEEPTIME__.state.stageId") == sid
+                era_badge = page.locator("#sv-era-badge").inner_text()
+                assert short_age in era_badge and era_name in era_badge, f"Wrong #sv-era-badge for {sid}: {era_badge}"
+                sv_title = page.locator("#sv-env-title").inner_text()
+                assert title_substr in sv_title, f"Wrong #sv-env-title for {sid}: {sv_title}"
+                sv_src = page.locator("#sv-image").get_attribute("src") or ""
+                assert scene_file in sv_src, f"Wrong #sv-image src for {sid}: {sv_src}"
+                assert sv_src not in seen_reenter_scenes, f"Repeated scene across stages: {sv_src}"
+                seen_reenter_scenes.add(sv_src)
+                assert short_age in page.locator("#minimap-era-label").inner_text()
+                assert short_age in page.locator("#drawer-scroll").inner_text()
+                verify_viewport_not_black(page, f"Re-enter Prehistoric View {sid}")
+
+                page.click("#btn-back-orbit")
+                page.wait_for_function(
+                    "() => !document.getElementById('streetview-layer').classList.contains('is-open')",
+                    polling=100,
+                    timeout=5000,
+                )
+                time.sleep(0.15)
+
+            # Mid-dive era switch: start dive on 20ka, switch to 4400ma during dive -> opens directly into 4400ma!
+            page.click("#btn-reenter-view")
+            time.sleep(0.12)
+            page.click('.stage-tab[data-stage-id="4400ma"]')
+            page.wait_for_selector("#streetview-layer.is-open", timeout=15000)
+            page.wait_for_function(
+                "() => { const i = document.getElementById('sv-image'); return i.complete && i.naturalWidth >= 1000 && i.src.includes('hadean_magma_coast.jpg'); }",
+                polling=100,
+                timeout=10000,
+            )
+            assert page.evaluate("() => window.__DEEPTIME__.state.stageId") == "4400ma"
+            assert "4.4 Ga" in page.locator("#sv-era-badge").inner_text()
+
+            # Mid-dive Escape cancellation: return to orbit, trigger dive, hit Escape mid-dive -> stays in orbit!
+            page.click("#btn-back-orbit")
+            time.sleep(0.45)
+            page.click("#btn-reenter-view")
+            time.sleep(0.12)
+            page.keyboard.press("Escape")
+            time.sleep(1.1)
+            assert page.locator("#streetview-layer.is-open").count() == 0, "Mid-dive Escape failed to cancel dive!"
+            print("[PASS] 6. Changing time period + 'Enter Prehistoric View' updates all 5 stages, mid-dive switch & Escape cancel")
+
+            # =================================================================
+            # TEST 7: Click-to-Drop Directly in Paleo Earth Mode (Inverse Euler)
+            # =================================================================
+            page.click("#btn-mode-paleo")
+            page.click('.stage-tab[data-stage-id="68ma"]')
             page.click("#btn-drop-mode")
             assert page.locator("#btn-drop-mode.is-active").count() == 1
             page.mouse.click(683, 430)
@@ -354,10 +451,10 @@ def run_suite():
             assert len(errors) == 0, f"Desktop WebGL errors: {errors}"
             assert len(failed_reqs) == 0, f"Desktop failed requests: {failed_reqs}"
             page.close()
-            print("[PASS] 6. Click-to-Drop in Paleo Earth mode -> bright Street View (0 errors)")
+            print("[PASS] 7. Click-to-Drop in Paleo Earth mode -> bright Street View (0 errors)")
 
             # =================================================================
-            # TEST 7: Forced No-WebGL 2D Canvas Fallback — Paleo Earth Land & Era Changes!
+            # TEST 8: Forced No-WebGL 2D Canvas Fallback — Paleo Earth Land & Era Changes!
             # =================================================================
             fb_errors = []
             fb_page = browser.new_page(viewport={"width": 1280, "height": 800})
@@ -402,12 +499,27 @@ def run_suite():
             )
             assert "Seaway" in fb_page.locator("#sv-env-title").inner_text()
             verify_viewport_not_black(fb_page, "2D Fallback Kansas Seaway")
+
+            # Also verify changing time period + Enter Prehistoric View works in 2D fallback mode!
+            fb_page.click("#btn-back-orbit")
+            time.sleep(0.25)
+            fb_page.click('.stage-tab[data-stage-id="4400ma"]')
+            assert "4.4 Ga" in fb_page.locator("#btn-reenter-label").inner_text()
+            fb_page.click("#btn-reenter-view")
+            fb_page.wait_for_selector("#streetview-layer.is-open", timeout=15000)
+            fb_page.wait_for_function(
+                "() => { const i = document.getElementById('sv-image'); return i.complete && i.naturalWidth >= 1000 && i.src.includes('hadean_'); }",
+                polling=100,
+                timeout=10000,
+            )
+            assert "4.4 Ga" in fb_page.locator("#sv-era-badge").inner_text()
+
             assert len(fb_errors) == 0, f"2D fallback errors: {fb_errors}"
             fb_page.close()
-            print("[PASS] 7. No-WebGL 2D Canvas fallback renders Paleo land, switches eras & opens Street View")
+            print("[PASS] 8. No-WebGL 2D Canvas fallback renders Paleo land, switches eras & re-enters Street View")
 
             # =================================================================
-            # TEST 8: 0x0 -> 1100x720 Preview Iframe Resize Recovery + Mobile Layout
+            # TEST 9: 0x0 -> 1100x720 Preview Iframe Resize Recovery + Mobile Layout
             # =================================================================
             host_page = browser.new_page(viewport={"width": 1280, "height": 800})
             host_page.set_content(f"""
@@ -427,18 +539,19 @@ def run_suite():
             dims = frame.evaluate("() => { const c = document.getElementById('globe-canvas'); return {w: c.width, h: c.height}; }")
             assert dims["w"] >= 1000 and dims["h"] >= 650, f"Iframe failed to resize: {dims}"
             host_page.close()
+            time.sleep(0.25)
 
             mob_page = browser.new_page(viewport={"width": 390, "height": 844})
-            mob_page.goto(BASE_URL, wait_until="networkidle")
+            mob_page.goto(BASE_URL, wait_until="load")
             mob_page.wait_for_function("() => window.__DEEPTIME__ && window.__DEEPTIME__.platesReady", polling=150, timeout=15000)
             time.sleep(0.5)
             assert not mob_page.evaluate("() => document.documentElement.scrollWidth > window.innerWidth")
             assert mob_page.locator("#field-drawer.is-collapsed").count() == 1
             mob_page.close()
-            print(f"[PASS] 8. Preview Iframe 0x0->1100x720 recovery ({dims['w']}x{dims['h']}) & Mobile responsive layout")
+            print(f"[PASS] 9. Preview Iframe 0x0->1100x720 recovery ({dims['w']}x{dims['h']}) & Mobile responsive layout")
 
             browser.close()
-            print("\nALL 8 STRICT VISUAL & FUNCTIONAL E2E SUITES PASSED 100%!")
+            print("\nALL 9 STRICT VISUAL & FUNCTIONAL E2E SUITES PASSED 100%!")
     finally:
         cleanup_srv()
 

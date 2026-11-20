@@ -120,33 +120,41 @@ export class StreetViewController {
     }
 
     const nextSrc = siteData.scene;
+    let applied = false;
+    const applyLoaded = (img) => {
+      if (applied || token !== this._loadToken) return;
+      applied = true;
+      this.imgAspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+      this._currentScenePath = nextSrc;
+      this.imgEl.src = img.src;
+      this.imgEl.classList.remove("is-loading");
+      this._updateTransform();
+    };
+
     const tryLoadScene = (attempt) => {
       if (token !== this._loadToken) return;
       const pre = new Image();
       this._inflightPre = pre;
-      pre.onload = () => {
-        if (token !== this._loadToken) return;
-        this.imgAspect = pre.naturalWidth / Math.max(1, pre.naturalHeight);
-        this.imgEl.src = pre.src;
-        this.imgEl.classList.remove("is-loading");
-        this._updateTransform();
-      };
+      pre.onload = () => applyLoaded(pre);
       pre.onerror = () => {
         if (token !== this._loadToken) return;
         if (attempt < 3) {
           setTimeout(() => tryLoadScene(attempt + 1), 350 * (attempt + 1));
         } else {
           console.warn(`Street View scene failed to load: ${nextSrc}`);
+          this.imgEl.src = nextSrc;
           this.imgEl.classList.remove("is-loading");
         }
       };
       pre.src = attempt > 0 ? `${nextSrc}?r=${attempt}` : nextSrc;
+      if (pre.complete && pre.naturalWidth > 0) {
+        applyLoaded(pre);
+      } else if (attempt === 0 && this._currentScenePath !== nextSrc) {
+        // Hide previous era's panorama only while waiting for the new scene to download
+        this.imgEl.classList.add("is-loading");
+      }
     };
 
-    // Only dim slightly if switching to a brand-new URL
-    if (!this.imgEl.src || !this.imgEl.src.endsWith(nextSrc)) {
-      this.imgEl.classList.add("is-loading");
-    }
     tryLoadScene(0);
   }
 

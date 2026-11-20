@@ -745,6 +745,8 @@ export class GlobeRenderer {
     const nextKey = mode === "paleo" ? stageId : "modern";
     this.mode = mode;
     this.stageId = stageId;
+    // Always prioritize warming the selected stage texture even while viewing Modern Earth
+    this._ensureTexKey(stageId);
     this._ensureTexKey(nextKey);
     if (nextKey === this.activeTexKey) {
       this.pendingTexKey = null;
@@ -810,11 +812,17 @@ export class GlobeRenderer {
     this.targetDist = 1.18;
     this.diveCb = onComplete;
     this.diveStartTs = performance.now();
+    // Ensure animation loop is active so dive completion always fires
+    this.start();
+  }
+
+  cancelDive() {
+    this.diving = false;
+    this.diveCb = null;
   }
 
   zoomBackToOrbit() {
-    this.diving = false;
-    this.diveCb = null;
+    this.cancelDive();
     this.targetDist = 3.38;
   }
 
@@ -1071,8 +1079,9 @@ export class GlobeRenderer {
     this.camLat += (this.targetLat - this.camLat) * smooth;
     this.camDist += (this.targetDist - this.camDist) * smooth;
 
+    const now = performance.now();
     if (this.diving && this.diveCb) {
-      const elapsed = ts - this.diveStartTs;
+      const elapsed = now - this.diveStartTs;
       if (this.camDist < 1.38 || elapsed > 760) {
         const cb = this.diveCb;
         this.diveCb = null;
@@ -1083,7 +1092,7 @@ export class GlobeRenderer {
 
     // Wall-clock smooth texture crossfade (always completes in 550ms regardless of FPS!)
     if (this.blend < 1.0) {
-      this.blend = clamp((ts - this.blendStartTs) / 550, 0, 1);
+      this.blend = clamp((now - this.blendStartTs) / 550, 0, 1);
     }
 
     const targetPinT = this.mode === "paleo" ? 1.0 : 0.0;

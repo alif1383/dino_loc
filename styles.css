@@ -137,6 +137,10 @@ button {
   transform: scale(1.03);
 }
 
+.orbit-hud.is-hidden * {
+  pointer-events: none !important;
+}
+
 .hud-top {
   position: absolute;
   top: 20px;
@@ -793,12 +797,12 @@ button {
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: opacity 0.45s ease;
+  transition: opacity 0.25s ease;
   pointer-events: none;
 }
 
 #sv-image.is-loading {
-  opacity: 0.25;
+  opacity: 0;
 }
 
 #sv-hotspots {
@@ -942,12 +946,32 @@ button {
   box-shadow: var(--shadow-soft);
 }
 
+.sv-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .sv-env-title {
   font-family: var(--font-serif);
   font-size: 17px;
   font-weight: 600;
   color: var(--ink-primary);
   line-height: 1.2;
+}
+
+.sv-era-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--accent-amber-bright);
+  background: var(--accent-amber-soft);
+  border: 1px solid rgba(217, 155, 56, 0.34);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  white-space: nowrap;
 }
 
 .sv-env-sub {

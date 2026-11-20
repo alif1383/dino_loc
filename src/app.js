@@ -45,6 +45,7 @@ const els = {
   pinCardCoords: $("#pin-card-coords"),
   pinCardKm: $("#pin-card-km"),
   btnReenterView: $("#btn-reenter-view"),
+  btnReenterLabel: $("#btn-reenter-label"),
   searchInput: $("#location-search"),
   searchResults: $("#search-results"),
   pegmanWell: $("#pegman-well"),
@@ -63,6 +64,7 @@ const els = {
   svLayer: $("#streetview-layer"),
   btnBackOrbit: $("#btn-back-orbit"),
   svEnvTitle: $("#sv-env-title"),
+  svEraBadge: $("#sv-era-badge"),
   svModernPlace: $("#sv-modern-place"),
   svPaleoCoords: $("#sv-paleo-coords"),
   svDriftBadge: $("#sv-drift-badge"),
@@ -199,8 +201,11 @@ function selectStage(stageId) {
 
   if (state.selectedModern && tectonics.ready) {
     recomputeSelectedSite();
+    preloadSiteAssets(state.currentSite);
     if (state.inStreetView) {
       renderStreetView(state.currentSite);
+    } else if (state.earthMode === "paleo" && !globe.diving) {
+      globe.focusOn(state.currentSite.paleoLat, state.currentSite.paleoLon, Math.max(globe.targetDist, 2.75));
     }
   }
 }
@@ -448,8 +453,29 @@ function preloadSiteAssets(site) {
   }
 }
 
+let diveSeq = 0;
+let diveOpenTimer = null;
+let diveVeilTimer = null;
+
+function cancelPendingDive() {
+  diveSeq += 1;
+  if (diveOpenTimer) {
+    clearTimeout(diveOpenTimer);
+    diveOpenTimer = null;
+  }
+  if (diveVeilTimer) {
+    clearTimeout(diveVeilTimer);
+    diveVeilTimer = null;
+  }
+  els.diveVeil.classList.remove("is-active");
+  if (globe) globe.cancelDive();
+}
+
 function dropExplorerAtModern(modernLat, modernLon, diveLat = null, diveLon = null) {
   if (!tectonics.ready) return;
+  cancelPendingDive();
+  const seq = diveSeq;
+
   state.selectedModern = { lat: modernLat, lon: modernLon };
   recomputeSelectedSite();
   // Warm panorama & creature portraits during the ~1s orbital dive so Street View opens instantly
@@ -461,10 +487,18 @@ function dropExplorerAtModern(modernLat, modernLon, diveLat = null, diveLon = nu
   // Trigger dramatic Google Earth orbital dive into the planet!
   els.orbitHud.classList.add("is-hidden");
   globe.flyToAndDive(targetLat, targetLon, () => {
+    if (seq !== diveSeq) return;
     els.diveVeil.classList.add("is-active");
-    setTimeout(() => {
+    diveOpenTimer = setTimeout(() => {
+      diveOpenTimer = null;
+      if (seq !== diveSeq) return;
+      // Always recompute against the latest state.stageId (handles mid-dive era switches!)
+      recomputeSelectedSite();
       openStreetView(state.currentSite);
-      setTimeout(() => els.diveVeil.classList.remove("is-active"), 180);
+      diveVeilTimer = setTimeout(() => {
+        diveVeilTimer = null;
+        els.diveVeil.classList.remove("is-active");
+      }, 180);
     }, 240);
   });
 }
@@ -482,12 +516,15 @@ function recomputeSelectedSite() {
     label: site.modernLabel
   });
 
-  // Update Top-Right Orbit Pin Summary Card
+  // Update Top-Right Orbit Pin Summary Card & dynamic Enter Prehistoric View button label
   els.orbitPinCard.classList.add("is-visible");
   els.pinCardPlace.textContent = site.modernLabel;
   els.pinCardSub.textContent = `${site.stage.shortAge} · ${site.environmentTitle}`;
   els.pinCardCoords.textContent = `${formatLatOnly(site.modernLat)} → ${formatLatOnly(site.paleoLat)}`;
   els.pinCardKm.textContent = site.driftKm > 40 ? `${site.driftKm.toLocaleString()} km drift` : "Modern position";
+  if (els.btnReenterLabel) {
+    els.btnReenterLabel.textContent = `Enter ${site.stage.shortAge} Prehistoric View`;
+  }
 }
 
 function openStreetView(site) {
@@ -500,6 +537,7 @@ function openStreetView(site) {
 }
 
 function returnToOrbit(switchToPaleo = false) {
+  cancelPendingDive();
   state.inStreetView = false;
   streetView.stop();
   globe.start();
@@ -521,6 +559,9 @@ function returnToOrbit(switchToPaleo = false) {
 
 function renderStreetView(site) {
   els.svEnvTitle.textContent = site.environmentTitle;
+  if (els.svEraBadge) {
+    els.svEraBadge.textContent = `${site.stage.shortAge} · ${site.stage.name}`;
+  }
   els.svModernPlace.textContent = site.modernLabel;
   els.svPaleoCoords.textContent = `${formatCoords(site.modernLat, site.modernLon)} → ${formatCoords(site.paleoLat, site.paleoLon)}`;
   els.svDriftBadge.textContent = site.driftKm > 40 ? `${site.driftKm.toLocaleString()} km continental drift` : "Near modern coordinates";
@@ -631,6 +672,7 @@ function renderMiniPaleoMap(site) {
   els.minimapEraLabel.textContent = `Paleo Earth · ${site.stage.shortAge}`;
 
   const draw = () => {
+    if (!state.currentSite || state.currentSite.stage.id !== site.stage.id) return;
     ctx.clearRect(0, 0, w, h);
     const img = getMinimapImage(site.stage.id);
     if (img && img.complete && img.naturalWidth) {
@@ -790,8 +832,9 @@ function bindControls() {
     globe.autoRotate = true;
   });
   els.btnReenterView.addEventListener("click", () => {
-    if (state.currentSite) {
-      dropExplorerAtModern(state.currentSite.modernLat, state.currentSite.modernLon);
+    const coord = state.selectedModern || (state.currentSite ? { lat: state.currentSite.modernLat, lon: state.currentSite.modernLon } : null);
+    if (coord) {
+      dropExplorerAtModern(coord.lat, coord.lon);
     }
   });
   els.btnBackOrbit.addEventListener("click", () => returnToOrbit(false));
@@ -803,7 +846,7 @@ function bindControls() {
 function bindKeyboard() {
   window.addEventListener("keydown", (e) => {
     if (document.activeElement === els.searchInput) return;
-    if (e.key === "Escape" && state.inStreetView) {
+    if (e.key === "Escape" && (state.inStreetView || globe.diving || diveOpenTimer)) {
       returnToOrbit(false);
     } else if (e.key >= "1" && e.key <= "5") {
       const idx = parseInt(e.key, 10) - 1;

@@ -243,3 +243,24 @@ test("Spherical math and coordinate formatting utilities", () => {
   assert.equal(formatCoords(-33.87, 151.21), "33.9°S, 151.2°E");
   assert.equal(formatLatOnly(-51.9), "51.9°S");
 });
+
+test("Every location reconstructs 5 distinct stages, titles, and scene panoramas across all time periods", async () => {
+  const { engine } = await loadLocalEngine();
+  for (const place of MODERN_PLACES) {
+    const seenScenes = new Set();
+    const seenTitles = new Set();
+    const seenStageIds = new Set();
+    for (const stage of STAGES) {
+      const site = engine.reconstructSite(place.lat, place.lon, stage.id);
+      assert.equal(site.stage.id, stage.id, `Wrong stage.id for ${place.name} at ${stage.id}`);
+      assert.ok(!seenStageIds.has(site.stage.id));
+      assert.ok(!seenScenes.has(site.scene), `Duplicate scene '${site.scene}' across stages at ${place.name}`);
+      assert.ok(!seenTitles.has(site.environmentTitle), `Duplicate title '${site.environmentTitle}' across stages at ${place.name}`);
+      seenStageIds.add(site.stage.id);
+      seenScenes.add(site.scene);
+      seenTitles.add(site.environmentTitle);
+    }
+    assert.equal(seenScenes.size, 5);
+  }
+});
+
