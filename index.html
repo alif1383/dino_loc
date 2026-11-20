@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeepTime Earth — Prehistoric Globe &amp; Time Street View</title>
+  <meta name="description" content="Drop an explorer anywhere on 3D Earth to travel across 4.4 billion years of prehistoric history—reconstructing continental drift, ancient environments, and regional dinosaurs from Hadean magma oceans to the Last Ice Age." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="app-shell">
+    <!-- ===================================================================
+         Full-Bleed 3D WebGL Earth Viewport (Google Earth Level)
+         =================================================================== -->
+    <section id="globe-viewport" aria-label="Interactive 3D Earth Globe">
+      <canvas id="globe-canvas"></canvas>
+      <canvas id="globe-overlay"></canvas>
+      <div class="space-vignette" aria-hidden="true"></div>
+    </section>
+
+    <!-- ===================================================================
+         Orbital Earth HUD
+         =================================================================== -->
+    <div id="orbit-hud" class="orbit-hud">
+      <header class="hud-top">
+        <!-- Top-Left Brand + Search -->
+        <div class="brand-cluster">
+          <div class="brand-header">
+            <h1 class="brand-title">DeepTime Earth</h1>
+            <span class="brand-subtitle">Paleo-Atlas</span>
+          </div>
+
+          <div class="search-box">
+            <div class="search-input-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+              </svg>
+              <input
+                id="location-search"
+                type="search"
+                autocomplete="off"
+                placeholder="Search city or fossil site (e.g., New York, Mumbai, Montana)..."
+                aria-label="Search modern cities or fossil sites"
+              />
+            </div>
+            <div id="search-results" class="search-results" role="listbox" aria-label="Location suggestions"></div>
+          </div>
+        </div>
+
+        <!-- Top-Center Prominent Earth Toggle: Modern Earth <-> Paleo Earth -->
+        <div class="earth-toggle-wrap">
+          <div class="segmented-toggle" role="group" aria-label="Earth Appearance Toggle">
+            <button id="btn-mode-modern" type="button" class="seg-btn is-active" data-mode="modern" aria-pressed="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+              <span>Modern Earth</span>
+            </button>
+            <button id="btn-mode-paleo" type="button" class="seg-btn" data-mode="paleo" aria-pressed="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 6v6l4 2"></path>
+              </svg>
+              <span>Paleo Earth</span>
+              <span id="toggle-era-age" class="seg-era-age">68 Ma</span>
+            </button>
+          </div>
+          <div id="orbit-era-caption" class="orbit-era-caption">
+            Late Cretaceous · Western Interior Seaway splits North America · Drag Explorer onto Earth
+          </div>
+        </div>
+
+        <!-- Top-Right Active Pin Re-Entry Summary Card -->
+        <aside id="orbit-pin-card" class="orbit-pin-card" aria-label="Selected Location Summary">
+          <div class="pin-card-head">
+            <div>
+              <div id="pin-card-place" class="pin-card-place">Montana, USA</div>
+              <div id="pin-card-sub" class="pin-card-sub">Hell Creek / Laramidia</div>
+            </div>
+          </div>
+          <div class="pin-card-drift">
+            <span id="pin-card-coords">47.5°N → 48.2°N</span>
+            <strong id="pin-card-km">1,240 km drift</strong>
+          </div>
+          <button id="btn-reenter-view" type="button" class="btn-enter-view">
+            <span>Enter Prehistoric View</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path d="M5 12h14M13 5l7 7-7 7"></path>
+            </svg>
+          </button>
+        </aside>
+      </header>
+
+      <!-- Bottom-Right Explorer Mannequin (Pegman) Dock & Globe Controls -->
+      <aside class="explorer-dock" aria-label="Explorer Drop & Globe Controls">
+        <div class="pegman-station">
+          <div id="pegman-hint" class="pegman-hint">
+            <strong>Drag Explorer</strong> anywhere on Earth to enter Prehistoric Street View
+          </div>
+          <button
+            id="pegman-well"
+            type="button"
+            class="pegman-well"
+            title="Drag onto Earth to drop into Prehistoric Street View"
+            aria-label="Drag Explorer mannequin onto Earth"
+          >
+            <svg class="pegman-svg" viewBox="0 0 40 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="pegGrad" x1="8" y1="2" x2="32" y2="50" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#ffd57a"/>
+                  <stop offset="55%" stop-color="#e5a235"/>
+                  <stop offset="100%" stop-color="#b06d14"/>
+                </linearGradient>
+              </defs>
+              <circle cx="20" cy="9.5" r="6.8" fill="url(#pegGrad)" stroke="#14181f" stroke-width="1.8"/>
+              <path d="M10.5 21.5C10.5 18.8 12.7 17 15.5 17H24.5C27.3 17 29.5 18.8 29.5 21.5V31.5C29.5 33.1 28.2 34.4 26.6 34.4H25.2V46.5C25.2 48.2 23.9 49.5 22.3 49.5C20.9 49.5 19.9 48.4 19.9 47V36.8H19.5V47C19.5 48.4 18.5 49.5 17.1 49.5C15.5 49.5 14.2 48.2 14.2 46.5V34.4H13.4C11.8 34.4 10.5 33.1 10.5 31.5V21.5Z" fill="url(#pegGrad)" stroke="#14181f" stroke-width="1.8" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="globe-controls" role="group" aria-label="Globe Zoom and Drop Controls">
+          <button id="btn-drop-mode" type="button" class="ctrl-btn" title="Click anywhere on Earth to drop Explorer" aria-label="Toggle click-to-drop mode" aria-pressed="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
+              <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+          </button>
+          <button id="btn-zoom-in" type="button" class="ctrl-btn" title="Zoom In" aria-label="Zoom In">+</button>
+          <button id="btn-zoom-out" type="button" class="ctrl-btn" title="Zoom Out" aria-label="Zoom Out">&minus;</button>
+          <button id="btn-reset-globe" type="button" class="ctrl-btn" title="Reset Orbit View" aria-label="Reset Orbit View">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path>
+              <path d="M3 3v5h5"></path>
+            </svg>
+          </button>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ===================================================================
+         Interactive Photorealistic Ground-Level "Street View" Layer
+         =================================================================== -->
+    <section id="streetview-layer" aria-label="Prehistoric Ground-Level Street View" aria-hidden="true">
+      <div id="sv-stage">
+        <div id="sv-pano-wrap">
+          <img id="sv-image" alt="Prehistoric ground-level reconstruction" draggable="false" />
+          <div id="sv-hotspots"></div>
+        </div>
+        <canvas id="sv-fx-canvas"></canvas>
+        <div class="sv-scrim-top" aria-hidden="true"></div>
+        <div class="sv-scrim-bottom" aria-hidden="true"></div>
+      </div>
+
+      <!-- Street View Top HUD -->
+      <div class="sv-top-bar">
+        <div class="sv-left-group">
+          <button id="btn-back-orbit" type="button" class="btn-back-orbit">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path d="M19 12H5M11 19l-7-7 7-7"></path>
+            </svg>
+            <span>Return to Earth</span>
+          </button>
+
+          <div class="sv-location-meta">
+            <div id="sv-env-title" class="sv-env-title">Hell Creek / Laramidia Cypress Forest</div>
+            <div class="sv-env-sub">
+              <span id="sv-modern-place">Montana, USA</span>
+              <span>&middot;</span>
+              <span id="sv-paleo-coords" class="mono">47.5°N &rarr; 51.2°N</span>
+              <span>&middot;</span>
+              <span id="sv-drift-badge" class="mono">1,410 km drift</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center Compass Ribbon -->
+        <div class="sv-compass" aria-hidden="true">
+          <div class="sv-compass-window">
+            <div id="sv-compass-track">
+              <span>W</span><span>NW</span><span>N</span><span>NE</span><span>E</span><span>SE</span><span>S</span><span>SW</span><span>W</span>
+            </div>
+          </div>
+          <div id="sv-compass-deg">090° E</div>
+        </div>
+
+        <!-- Right Field Guide Toggle -->
+        <div class="sv-right-actions">
+          <button id="btn-drawer-toggle" type="button" class="btn-drawer-toggle" aria-expanded="true" aria-controls="field-drawer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path>
+            </svg>
+            <span id="drawer-toggle-label">Hide Field Guide</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Clickable Sighting Callout Toast -->
+      <div id="sv-sighting-toast" class="sv-sighting-toast" role="status">
+        <div class="toast-head">
+          <span id="toast-title" class="toast-title"></span>
+          <button id="toast-close" type="button" class="toast-close" aria-label="Close sighting note">&times;</button>
+        </div>
+        <div id="toast-body" class="toast-body"></div>
+      </div>
+
+      <!-- Bottom-Left Live Paleo-Map Inset (Click to inspect Paleo Globe!) -->
+      <div id="sv-minimap" class="sv-minimap" title="Click to inspect Paleo Earth from orbit">
+        <canvas id="sv-minimap-canvas" width="352" height="176"></canvas>
+        <div class="sv-minimap-caption">
+          <span id="minimap-era-label">Paleo Earth · 68 Ma</span>
+          <strong id="minimap-drift">View 3D</strong>
+        </div>
+      </div>
+
+      <!-- Right Collapsible Field Guide & Dinosaur Atlas Drawer -->
+      <aside id="field-drawer" class="field-drawer" aria-label="Prehistoric Fauna & Geological Evidence">
+        <div id="drawer-scroll" class="drawer-scroll">
+          <!-- Populated dynamically per location & stage -->
+        </div>
+      </aside>
+    </section>
+
+    <!-- ===================================================================
+         Shared Bottom 5-Stage Geological Timeline Rail
+         =================================================================== -->
+    <nav id="timeline-dock" class="timeline-dock" aria-label="Prehistoric Geological Stages"></nav>
+
+    <!-- ===================================================================
+         Floating Dragging Pegman & Live Coordinate Preview Tooltip
+         =================================================================== -->
+    <div id="drag-pegman" aria-hidden="true">
+      <svg class="pegman-svg" viewBox="0 0 40 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="dragPegGrad" x1="8" y1="2" x2="32" y2="50" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#ffe194"/>
+            <stop offset="55%" stop-color="#eba938"/>
+            <stop offset="100%" stop-color="#b56f12"/>
+          </linearGradient>
+        </defs>
+        <circle cx="20" cy="9.5" r="6.8" fill="url(#dragPegGrad)" stroke="#10141c" stroke-width="1.8"/>
+        <path d="M10.5 21.5C10.5 18.8 12.7 17 15.5 17H24.5C27.3 17 29.5 18.8 29.5 21.5V31.5C29.5 33.1 28.2 34.4 26.6 34.4H25.2V46.5C25.2 48.2 23.9 49.5 22.3 49.5C20.9 49.5 19.9 48.4 19.9 47V36.8H19.5V47C19.5 48.4 18.5 49.5 17.1 49.5C15.5 49.5 14.2 48.2 14.2 46.5V34.4H13.4C11.8 34.4 10.5 33.1 10.5 31.5V21.5Z" fill="url(#dragPegGrad)" stroke="#10141c" stroke-width="1.8" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <div id="drag-telemetry" aria-hidden="true">
+      <div id="dt-modern" class="dt-modern">New York City, USA</div>
+      <div id="dt-coords" class="dt-coords">40.7°N, 74.0°W · North American Plate</div>
+      <div id="dt-paleo" class="dt-paleo">68 Ma → 33.8°N · Appalachia Coastal Plain</div>
+      <div class="dt-cta">Release anywhere on Earth to explore</div>
+    </div>
+
+    <!-- Atmospheric Orbital Dive Veil -->
+    <div id="dive-veil" aria-hidden="true"></div>
+
+    <!-- Subtle Boot Status / Error Banner -->
+    <div id="boot-status" class="boot-status" role="status" aria-live="polite">
+      <span class="boot-spinner" aria-hidden="true"></span>
+      <span id="boot-status-text">Loading Earth &amp; tectonic plates&hellip;</span>
+    </div>
+  </main>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
